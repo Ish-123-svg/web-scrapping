@@ -1,0 +1,92 @@
+import requests
+from bs4 import BeautifulSoup
+
+import csv,base64,os,pyodbc
+
+server ='DESKTOP-V3I5CIE'
+dbname = 'President'
+tblname = 'president_data'
+
+def createcsv():
+    with open('struct.csv', 'w', newline='') as myCsvFile:
+        columns = ["Name of President", "Date of Union Address ", "Link to Address","Filename_Address","Text of Address"]
+        writer = csv.DictWriter(myCsvFile, fieldnames=columns)
+        writer.writeheader()
+        
+        
+def append_list_as_row(file_name, a,b,l,textname,text):
+    with open('struct.csv', 'a+', newline='') as myCsvFile:  
+        columns = ["Name of President", "Date of Union Address ", "Link to Address","Filename_Address","Text of Address"]
+        writer = csv.DictWriter(myCsvFile, fieldnames=columns)
+        writer.writerow({"Name of President": a, "Date of Union Address ": b,"Link to Address":l,"Filename_Address":textname,"Text of Address":text})
+ 
+    
+def gettext(link):
+    page1 = requests.get(link)
+    soup1 = BeautifulSoup(page1.content, 'html.parser')
+    data = soup1.find("div",{"class":"article"})
+    data= data.find_all('p')
+    spch = ''
+    for dat in data:
+        spch = spch + dat.text
+    return spch 
+
+def saveintext(text,i):
+      with open("InfoUnionAddress_{}.txt".format(i), "w") as f:
+        f.write(str(text))
+        f.close()
+        return str('C:\\Users\\Avengers\\Desktop\\New folder\\project1\\'+os.path.basename(f.name))
+
+
+def connect_to_sql_server(server,dbname,tblname):
+    odbc_conn = pyodbc.connect('DRIVER={SQL Server};SERVER='+server+';Trusted_Connection=yes;')
+    odbc_conn.autocommit = True
+    cursor = odbc_conn.cursor()
+    transaction = "IF DB_ID('{0}') IS NULL CREATE DATABASE {0};".format(dbname)
+    cursor.execute(transaction)
+    transaction = "USE {0};".format(dbname)
+    cursor.execute(transaction)
+                              
+    transaction= "IF OBJECT_ID('dbo.{0}') IS NOT NULL DROP TABLE dbo.{0}".format(tblname)
+    cursor.execute(transaction)
+    transaction = "CREATE TABLE dbo.{0}( Name_of_president varchar(20), Date_of_Union_Address DATE, Link_to_Address varchar(200),Filename_Address varchar(100), Text_of_Address TEXT);".format(tblname)
+    cursor.execute(transaction)
+    return cursor
+                              
+def insert_row_into_table(cursor,tblname,name,date,link,file,text):
+        text = text.replace("'","''")
+        transaction = "INSERT INTO {0} VALUES('{1}','{2}','{3}','{4}','{5}');".format(tblname,name,date,link,file,text)
+        cursor.execute(transaction)
+                              
+                              
+
+URL = 'http://cis.csuohio.edu/~sschung/CIS593/SimplifiedInfoUnionAddress.htm'
+#URL = 'https://www.infoplease.com/homework-help/history/collected-state-union-addresses-us-presidents'
+page = requests.get(URL)
+soup = BeautifulSoup(page.content, 'html.parser')
+results = soup.find(id='mainaside')
+
+job_elems = results.find_all('dt')
+createcsv();
+cursor = connect_to_sql_server(server,dbname,tblname)
+for i in range(len(job_elems)):     
+    job_elem = job_elems[i]
+    title_elem = job_elem.find('a')
+    aa = title_elem.text.strip().split('(')
+    bb = aa[1].split(')')
+    cc = title_elem.text.replace(" ","-")
+    cc = cc.replace("(","")
+    cc = cc.replace(")","")
+    cc = cc.replace(",","")
+    link = 'https://www.infoplease.com/homework-help/us-documents/state-union-address-'+cc.lower()
+    req = requests.get(link)
+    if req.status_code == 200:
+        text = gettext(link)
+    else:
+        text = gettext('https://www.infoplease.com/homework-help/us-documents/'+cc.lower())        
+    textname = saveintext(text,i+1)
+    insert_row_into_table(cursor,tblname,aa[0],bb[0],link,textname,text)
+    append_list_as_row('struct.csv', aa[0],bb[0],link,textname,text)
+        
+
+        
